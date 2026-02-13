@@ -43,5 +43,16 @@
     "avg_hours_to_final_high": 2.7222222222222223,
     "avg_hours_to_final_low": 3.2222222222222223,
     "avg_lh_move_pct": -0.06458888888888889
+  },
+  "other_days": {
+    "total_count": 29,
+    "new_high_rate": 0.6896551724137931,
+    "new_low_rate": 0.6206896551724138,
+    "avg_ext_above_fh_high": 0.5041344827586206,
+    "avg_ext_below_fh_low": 1.0559862068965518,
+    "avg_hours_to_final_high": 2.3448275862068964,
+    "avg_hours_to_final_low": 2.5,
+    "avg_lh_move_pct": -0.0877962962962963,
+    "avg_fh_vol_vs_day": 0.22881724137931037
   }
 }

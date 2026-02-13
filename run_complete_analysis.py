@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-First Hour Volume Analysis - Complete Package (Multi-timeframe + Chop Days + Last Hour Reaction)
+First Hour Volume Analysis - Complete Package (Multi-timeframe + Chop Days + Other Days + Last Hour Reaction + Day Charts)
 
 - Uses NY RTH time (America/New_York)
 - Filters to 9:30–16:00 ET
@@ -10,45 +10,43 @@ First Hour Volume Analysis - Complete Package (Multi-timeframe + Chop Days + Las
 Event filtering:
 - "Big first hour volume day" = first hour volume >= volume_quantile threshold (default q=0.75)
 
-Buckets (on big-volume days):
+Buckets (on BIG-volume days only):
 1) Sell-off (FH move % <= -move_threshold_pct)
 2) Buy-up   (FH move % >= +move_threshold_pct)
 3) Chop/No Breakout (abs(FH move %) < move_threshold_pct)
 
-Metrics per bucket:
+NEW Bucket:
+4) Other / Normal Days = days with valid first-hour bars, but first-hour volume < big-volume threshold.
+   -> same “after first hour” metrics as Chop bucket, so you can study “normal” behavior.
+
+Metrics:
 - final_abs_low/high after first hour
 - time-to-final-abs-low/high in HOURS (timeframe-aware)
 - extension points beyond FH low/high
-- continuation hours (time to final abs extreme if it extends beyond FH)
+- continuation hours (sell/buy only)
 - bounce/pullback 25%/50% measured from running extremes (sell/buy)
 - friendly chop hours (sell/buy) before 25% bounce/pullback
-
-NEW: Last hour reaction (15:00–16:00 ET) on every event day:
-- lh_open/high/low/close, lh_range, lh_move_pct
-- lh_volume, lh_vol_vs_day
+- last hour reaction (15:00–16:00 ET): OHLC/range/move%, volume and % of day volume
+- chart per day (base64) saved to SYMBOL_TF_charts.json and shown in dashboard
 
 Outputs:
 - SYMBOL_TF_selloffs_detail.csv
 - SYMBOL_TF_buyups_detail.csv
 - SYMBOL_TF_chop_days_detail.csv
+- SYMBOL_TF_other_days_detail.csv
 - SYMBOL_TF_summary_stats.json
-- SYMBOL_TF_analysis_dashboard.html (via create_dashboard.py)
+- SYMBOL_TF_charts.json
+- SYMBOL_TF_analysis_dashboard.html
 
 Usage:
-  python run_complete_analysis.py --symbol SPY --tf 30m
-  python run_complete_analysis.py --symbol QQQ --tf 15m
-  python run_complete_analysis.py --symbol SPY --tf 1h
-  python run_complete_analysis.py --symbol SPY --tf 30m --chop_band_pct 0.7 --chop_max_range_mult 2.5
-
-Requirements:
-  yfinance pandas numpy
+  python run_complete_analysis.py --symbol SPY --tf 1h --days 180
+  python run_complete_analysis.py --symbol QQQ --tf 15m --days 60
+  python run_complete_analysis.py --symbol SPY --tf 30m --days 60 --chop_band_pct 0.65 --chop_max_range_mult 2.2
 """
 
 import argparse
 import subprocess
 import sys
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import base64
 from io import BytesIO
 
@@ -61,9 +59,16 @@ DEFAULTS_BY_TF = {
     "2h":  {"chop_band_pct": 1.10, "chop_max_range_mult": 3.25},
 }
 
+INTRADAY_MAX_DAYS = {
+    "15m": 60,
+    "30m": 60,
+    "1h": 730,
+    "2h": 730,
+}
+
 
 def check_and_install_dependencies():
-    required = ["yfinance", "pandas", "numpy"]
+    required = ["yfinance", "pandas", "numpy", "matplotlib"]
     print("Checking dependencies...")
     for package in required:
         try:
@@ -152,12 +157,7 @@ def convert_to_ny_time(df):
 
 
 def compute_last_hour_metrics(day_data, rth_end_time):
-    """
-    Last hour defined as 15:00–16:00 ET.
-    Returns dict with last-hour stats, or None-values if missing.
-    """
     from datetime import time
-
     last_start = time(15, 0)
     last_end = rth_end_time  # 16:00
 
@@ -200,22 +200,19 @@ def safe_mean(series):
     s = series.dropna()
     return float(s.mean()) if len(s) else 0.0
 
+
 def make_candles_base64(day_df, title=""):
-    """
-    Build a simple candlestick chart (no external libs) and return base64 PNG string.
-    day_df must have columns: Datetime, Open, High, Low, Close
-    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
     if day_df is None or day_df.empty:
         return None
 
     d = day_df.copy().reset_index(drop=True)
 
-    fig, ax = plt.subplots(figsize=(11, 4))
+    fig, ax = plt.subplots(figsize=(12, 4.2))
     ax.set_title(title)
     ax.grid(True, alpha=0.25)
-
-    # X positions
-    xs = list(range(len(d)))
 
     for i, row in d.iterrows():
         o = float(row["Open"])
@@ -224,16 +221,12 @@ def make_candles_base64(day_df, title=""):
         c = float(row["Close"])
 
         up = c >= o
-        # Candle body
         body_low = min(o, c)
         body_high = max(o, c)
         body_h = max(body_high - body_low, 1e-9)
 
-        # Wick
         ax.vlines(i, l, h, linewidth=1)
 
-        # Body rectangle (no fixed colors requested; using default matplotlib cycle is ugly)
-        # We'll keep it minimal: filled for up candles, unfilled for down candles.
         rect = Rectangle(
             (i - 0.30, body_low),
             0.60,
@@ -243,16 +236,14 @@ def make_candles_base64(day_df, title=""):
         )
         ax.add_patch(rect)
 
-    # X labels as time stamps (sparse)
     times = [t.strftime("%H:%M") for t in d["Datetime"]]
     step = max(1, len(times) // 10)
-    ax.set_xticks(xs[::step])
+    ax.set_xticks(list(range(len(d)))[::step])
     ax.set_xticklabels(times[::step], rotation=0)
 
     ax.set_xlim(-1, len(d))
     ax.set_ylabel("Price")
 
-    # Tight bounds
     ymin = float(d["Low"].min())
     ymax = float(d["High"].max())
     pad = (ymax - ymin) * 0.05 if ymax > ymin else 1.0
@@ -263,11 +254,10 @@ def make_candles_base64(day_df, title=""):
     fig.savefig(buf, format="png", dpi=150)
     plt.close(fig)
     buf.seek(0)
-
     return base64.b64encode(buf.read()).decode("utf-8")
-    
+
+
 def main():
-    
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbol", default="SPY", help="Ticker symbol (SPY, QQQ, IWM, AAPL, etc.)")
     parser.add_argument("--tf", default="1h", choices=SUPPORTED_TF, help="Timeframe: 15m, 30m, 1h, 2h")
@@ -305,30 +295,21 @@ def main():
 
     import yfinance as yf
     import pandas as pd
-    from datetime import datetime, timedelta, time
+    from datetime import time
     import json
 
     print("=" * 80)
     print(f"STEP 1: Fetching {symbol} data from Yahoo Finance")
     print("=" * 80)
 
-    # --- Yahoo intraday limits ---
-    INTRADAY_MAX_DAYS = {
-        "15m": 60,
-        "30m": 60,
-        "1h": 730,
-        "2h": 730,
-    }
-
     max_days = INTRADAY_MAX_DAYS.get(tf, args.days)
     if args.days > max_days:
         print(f"⚠️ Yahoo limit: {tf} supports ~{max_days} days. Reducing lookback from {args.days} -> {max_days}.")
         args.days = max_days
 
-    # ✅ Use period for intraday to avoid Yahoo start/end rejection
     def days_to_period(d):
-        # Keep inside Yahoo intraday window; 59d is often safer than 60d
-        if d >= 60:
+        # 59d is often safer than 60d for intraday
+        if tf in ("15m", "30m") and d >= 60:
             return "59d"
         return f"{int(d)}d"
 
@@ -354,42 +335,6 @@ def main():
     if len(df) == 0:
         print("✗ No data received.")
         sys.exit(1)
-        
-    # print("=" * 80)
-    # print(f"STEP 1: Fetching {symbol} data from Yahoo Finance")
-    # print("=" * 80)
-
-    # end_date = datetime.now()
-    # start_date = end_date - timedelta(days=args.days)
-
-    # print(f"Downloading {symbol} data from {start_date.date()} to {end_date.date()} | interval={tf} ...")
-
-    # # --- Yahoo intraday limits (common): 15m/30m only ~60 days ---
-    # INTRADAY_MAX_DAYS = {
-    #     "15m": 60,
-    #     "30m": 60,
-    #     "1h": 730,   # Yahoo typically allows much longer for 60m
-    #     "2h": 730,
-    # }
-
-    # max_days = INTRADAY_MAX_DAYS.get(tf, args.days)
-    # if args.days > max_days:
-    #     print(f"⚠️ Yahoo limit: {tf} supports ~{max_days} days. Reducing lookback from {args.days} -> {max_days}.")
-    #     args.days = max_days
-
-    # end_date = datetime.now()
-    # start_date = end_date - timedelta(days=args.days)
-
-    # try:
-    #     df = yf.download(symbol, start=start_date, end=end_date, interval=tf, progress=True)
-    #     print(f"\n✓ Successfully downloaded {len(df)} bars")
-    # except Exception as e:
-    #     print(f"\n✗ Error downloading data: {e}")
-    #     sys.exit(1)
-
-    if len(df) == 0:
-        print("✗ No data received.")
-        sys.exit(1)
 
     print("\n" + "=" * 80)
     print("STEP 2: Processing and Analyzing Data")
@@ -399,7 +344,6 @@ def main():
     df = flatten_columns_if_needed(df)
     df = ensure_datetime_column(df)
 
-    # Normalize OHLCV
     for base in ["Open", "High", "Low", "Close", "Volume"]:
         src = pick_col(df, base)
         if src != base:
@@ -408,23 +352,19 @@ def main():
     for c in ["Open", "High", "Low", "Close", "Volume"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Convert to NY time
     df = convert_to_ny_time(df)
     df = df.sort_values("Datetime").reset_index(drop=True)
 
     df["Time"] = df["Datetime"].dt.time
     df["Date"] = df["Datetime"].dt.date
 
-    # Filter RTH 09:30–16:00
     rth_start = time(9, 30)
     rth_end = time(16, 0)
     df = df[(df["Time"] >= rth_start) & (df["Time"] <= rth_end)].copy()
 
-    # First hour 09:30–10:30
     fh_end = time(10, 30)
     df["IsFirstHour"] = df["Time"].apply(lambda t: rth_start <= t < fh_end)
 
-    # First hour volume threshold
     print("\nCalculating first-hour volume threshold...")
     first_hour_volume = df.loc[df["IsFirstHour"]].groupby("Date")["Volume"].sum()
     if len(first_hour_volume) == 0:
@@ -434,15 +374,14 @@ def main():
     big_volume_threshold = float(first_hour_volume.quantile(args.volume_quantile))
     print(f"✓ Big volume threshold (q={args.volume_quantile:.2f}): {big_volume_threshold:,.0f}")
 
-    print("\nAnalyzing event days...")
-    results = {"selloffs": [], "buyups": [], "chop_days": []}
+    print("\nAnalyzing days...")
+    results = {"selloffs": [], "buyups": [], "chop_days": [], "other_days": []}
 
-    # ✅ IMPORTANT: define charts storage ONCE (not inside loop)
+    # ✅ FIX: charts dict must live OUTSIDE the loop
     charts_by_date = {}
 
     for date in df["Date"].unique():
         day_data = df[df["Date"] == date].sort_values("Datetime").reset_index(drop=True)
-
         if len(day_data) < 2:
             continue
 
@@ -451,25 +390,18 @@ def main():
             continue
 
         fh_volume = float(fh["Volume"].sum())
-        if fh_volume < big_volume_threshold:
-            continue
+        day_volume = float(day_data["Volume"].sum()) if len(day_data) else 0.0
+        fh_vol_vs_day = (fh_volume / day_volume) if day_volume > 0 else None
 
-        # Build a chart for this whole RTH day (after we know it's a big-volume event day)
-        chart_b64 = make_candles_base64(
-            day_data,
-            title=f"{symbol} {tf} | {date} (RTH)"
-        )
-        charts_by_date[str(date)] = chart_b64
-
-        # last hour reaction for this day
+        # last hour reaction
         lh_metrics = compute_last_hour_metrics(day_data, rth_end_time=rth_end)
 
         fh_open = float(fh.iloc[0]["Open"])
         fh_high = float(fh["High"].max())
         fh_low = float(fh["Low"].min())
         fh_close = float(fh.iloc[-1]["Close"])
-
         fh_move_pct = ((fh_close - fh_open) / fh_open) * 100.0
+
         after_fh = day_data[~day_data["IsFirstHour"]].reset_index(drop=True)
 
         # final abs high/low AFTER first hour
@@ -494,137 +426,179 @@ def main():
             ext_above = round(final_abs_high - fh_high, 4)
             ext_below = round(fh_low - final_abs_low, 4)
 
-        # ---------------- SELL-OFF ----------------
-        if fh_move_pct <= -move_thr:
-            fh_range = fh_open - fh_low
+        made_new_high = (final_abs_high is not None) and (final_abs_high > fh_high)
+        made_new_low = (final_abs_low is not None) and (final_abs_low < fh_low)
 
-            continuation_found = (final_abs_low is not None) and (final_abs_low < fh_low)
-            failed = not continuation_found
-            continuation_hours = hours_to_final_abs_low if continuation_found else 0.0
+        is_big_volume = fh_volume >= big_volume_threshold
 
-            bounce_25_hours = None
-            bounce_50_hours = None
-            chop_hours = 0.0
+        # Save chart for EVERY day we keep (big-volume + other-days), so dashboard can show it.
+        # (You can comment this out if file size gets too big.)
+        chart_b64 = make_candles_base64(day_data, title=f"{symbol} {tf} | {date} (RTH)")
+        if chart_b64:
+            charts_by_date[str(date)] = chart_b64
 
-            if len(after_fh) > 0 and fh_range > 0:
-                abs_bottom = fh_low
+        # ---------------- BIG-VOLUME DAYS: classify into sell/buy/chop ----------------
+        if is_big_volume:
+            # SELL-OFF
+            if fh_move_pct <= -move_thr:
+                fh_range = fh_open - fh_low
 
-                for j, row in after_fh.iterrows():
-                    elapsed_hours = (j + 1) * BAR_HOURS
+                continuation_found = (final_abs_low is not None) and (final_abs_low < fh_low)
+                failed = not continuation_found
+                continuation_hours = hours_to_final_abs_low if continuation_found else 0.0
 
-                    bar_low = float(row["Low"])
-                    bar_high = float(row["High"])
-                    bar_range = bar_high - bar_low
+                bounce_25_hours = None
+                bounce_50_hours = None
+                chop_hours = 0.0
 
-                    made_new_low = bar_low < abs_bottom
-                    if made_new_low:
-                        abs_bottom = bar_low
+                if len(after_fh) > 0 and fh_range > 0:
+                    abs_bottom = fh_low
+                    for j, row in after_fh.iterrows():
+                        elapsed_hours = (j + 1) * BAR_HOURS
 
-                    recovery = bar_high - abs_bottom
-                    recovery_pct = (recovery / fh_range) * 100.0
+                        bar_low = float(row["Low"])
+                        bar_high = float(row["High"])
+                        bar_range = bar_high - bar_low
 
-                    if bounce_25_hours is None and recovery_pct >= 25:
-                        bounce_25_hours = round(elapsed_hours, 4)
-                    if bounce_50_hours is None and recovery_pct >= 50:
-                        bounce_50_hours = round(elapsed_hours, 4)
+                        made_new_low_run = bar_low < abs_bottom
+                        if made_new_low_run:
+                            abs_bottom = bar_low
 
-                    # Friendly chop until 25% bounce occurs
-                    if bounce_25_hours is None:
-                        in_band = bar_high <= (abs_bottom + CHOP_BAND_PCT * fh_range)
-                        not_huge = bar_range <= (CHOP_MAX_RANGE_MULT * fh_range)
-                        if (not made_new_low) and in_band and not_huge:
-                            chop_hours += BAR_HOURS
+                        recovery = bar_high - abs_bottom
+                        recovery_pct = (recovery / fh_range) * 100.0
 
-            results["selloffs"].append({
-                "date": str(date),
-                "tf": tf,
-                "fh_move_pct": round(fh_move_pct, 4),
-                "first_hour_range": round(fh_range, 4),
+                        if bounce_25_hours is None and recovery_pct >= 25:
+                            bounce_25_hours = round(elapsed_hours, 4)
+                        if bounce_50_hours is None and recovery_pct >= 50:
+                            bounce_50_hours = round(elapsed_hours, 4)
 
-                "final_abs_low": None if final_abs_low is None else round(final_abs_low, 4),
-                "hours_to_final_abs_low": hours_to_final_abs_low,
-                "extension_points_below_fh_low": ext_below,
+                        # Friendly chop until 25% bounce occurs
+                        if bounce_25_hours is None:
+                            in_band = bar_high <= (abs_bottom + CHOP_BAND_PCT * fh_range)
+                            not_huge = bar_range <= (CHOP_MAX_RANGE_MULT * fh_range)
+                            if (not made_new_low_run) and in_band and not_huge:
+                                chop_hours += BAR_HOURS
 
-                "continuation_hours": continuation_hours,
-                "chop_hours": round(chop_hours, 4),
-                "bounce_25_hours": bounce_25_hours,
-                "bounce_50_hours": bounce_50_hours,
-                "failed_selloff": bool(failed),
+                results["selloffs"].append({
+                    "date": str(date), "tf": tf,
+                    "fh_move_pct": round(fh_move_pct, 4),
+                    "first_hour_range": round(fh_range, 4),
 
-                # last hour reaction
-                **lh_metrics,
-            })
+                    "fh_volume": round(fh_volume, 2),
+                    "day_volume": round(day_volume, 2),
+                    "fh_vol_vs_day": None if fh_vol_vs_day is None else round(fh_vol_vs_day, 4),
 
-        # ---------------- BUY-UP ----------------
-        elif fh_move_pct >= move_thr:
-            fh_range = fh_high - fh_open
+                    "final_abs_low": None if final_abs_low is None else round(final_abs_low, 4),
+                    "hours_to_final_abs_low": hours_to_final_abs_low,
+                    "extension_points_below_fh_low": ext_below,
 
-            continuation_found = (final_abs_high is not None) and (final_abs_high > fh_high)
-            failed = not continuation_found
-            continuation_hours = hours_to_final_abs_high if continuation_found else 0.0
+                    "continuation_hours": continuation_hours,
+                    "chop_hours": round(chop_hours, 4),
+                    "bounce_25_hours": bounce_25_hours,
+                    "bounce_50_hours": bounce_50_hours,
+                    "failed_selloff": bool(failed),
 
-            pullback_25_hours = None
-            pullback_50_hours = None
-            chop_hours = 0.0
+                    **lh_metrics,
+                })
 
-            if len(after_fh) > 0 and fh_range > 0:
-                abs_top = fh_high
+            # BUY-UP
+            elif fh_move_pct >= move_thr:
+                fh_range = fh_high - fh_open
 
-                for j, row in after_fh.iterrows():
-                    elapsed_hours = (j + 1) * BAR_HOURS
+                continuation_found = (final_abs_high is not None) and (final_abs_high > fh_high)
+                failed = not continuation_found
+                continuation_hours = hours_to_final_abs_high if continuation_found else 0.0
 
-                    bar_low = float(row["Low"])
-                    bar_high = float(row["High"])
-                    bar_range = bar_high - bar_low
+                pullback_25_hours = None
+                pullback_50_hours = None
+                chop_hours = 0.0
 
-                    made_new_high = bar_high > abs_top
-                    if made_new_high:
-                        abs_top = bar_high
+                if len(after_fh) > 0 and fh_range > 0:
+                    abs_top = fh_high
+                    for j, row in after_fh.iterrows():
+                        elapsed_hours = (j + 1) * BAR_HOURS
 
-                    pullback = abs_top - bar_low
-                    pullback_pct = (pullback / fh_range) * 100.0
+                        bar_low = float(row["Low"])
+                        bar_high = float(row["High"])
+                        bar_range = bar_high - bar_low
 
-                    if pullback_25_hours is None and pullback_pct >= 25:
-                        pullback_25_hours = round(elapsed_hours, 4)
-                    if pullback_50_hours is None and pullback_pct >= 50:
-                        pullback_50_hours = round(elapsed_hours, 4)
+                        made_new_high_run = bar_high > abs_top
+                        if made_new_high_run:
+                            abs_top = bar_high
 
-                    # Friendly chop until 25% pullback occurs
-                    if pullback_25_hours is None:
-                        in_band = bar_low >= (abs_top - CHOP_BAND_PCT * fh_range)
-                        not_huge = bar_range <= (CHOP_MAX_RANGE_MULT * fh_range)
-                        if (not made_new_high) and in_band and not_huge:
-                            chop_hours += BAR_HOURS
+                        pullback = abs_top - bar_low
+                        pullback_pct = (pullback / fh_range) * 100.0
 
-            results["buyups"].append({
-                "date": str(date),
-                "tf": tf,
-                "fh_move_pct": round(fh_move_pct, 4),
-                "first_hour_range": round(fh_range, 4),
+                        if pullback_25_hours is None and pullback_pct >= 25:
+                            pullback_25_hours = round(elapsed_hours, 4)
+                        if pullback_50_hours is None and pullback_pct >= 50:
+                            pullback_50_hours = round(elapsed_hours, 4)
 
-                "final_abs_high": None if final_abs_high is None else round(final_abs_high, 4),
-                "hours_to_final_abs_high": hours_to_final_abs_high,
-                "extension_points_above_fh_high": ext_above,
+                        # Friendly chop until 25% pullback occurs
+                        if pullback_25_hours is None:
+                            in_band = bar_low >= (abs_top - CHOP_BAND_PCT * fh_range)
+                            not_huge = bar_range <= (CHOP_MAX_RANGE_MULT * fh_range)
+                            if (not made_new_high_run) and in_band and not_huge:
+                                chop_hours += BAR_HOURS
 
-                "continuation_hours": continuation_hours,
-                "chop_hours": round(chop_hours, 4),
-                "pullback_25_hours": pullback_25_hours,
-                "pullback_50_hours": pullback_50_hours,
-                "failed_buyup": bool(failed),
+                results["buyups"].append({
+                    "date": str(date), "tf": tf,
+                    "fh_move_pct": round(fh_move_pct, 4),
+                    "first_hour_range": round(fh_range, 4),
 
-                # last hour reaction
-                **lh_metrics,
-            })
+                    "fh_volume": round(fh_volume, 2),
+                    "day_volume": round(day_volume, 2),
+                    "fh_vol_vs_day": None if fh_vol_vs_day is None else round(fh_vol_vs_day, 4),
 
-        # ---------------- CHOP / NO BREAKOUT ----------------
+                    "final_abs_high": None if final_abs_high is None else round(final_abs_high, 4),
+                    "hours_to_final_abs_high": hours_to_final_abs_high,
+                    "extension_points_above_fh_high": ext_above,
+
+                    "continuation_hours": continuation_hours,
+                    "chop_hours": round(chop_hours, 4),
+                    "pullback_25_hours": pullback_25_hours,
+                    "pullback_50_hours": pullback_50_hours,
+                    "failed_buyup": bool(failed),
+
+                    **lh_metrics,
+                })
+
+            # BIG-VOLUME CHOP / NO BREAKOUT
+            else:
+                results["chop_days"].append({
+                    "date": str(date), "tf": tf,
+                    "fh_move_pct": round(fh_move_pct, 4),
+
+                    "fh_volume": round(fh_volume, 2),
+                    "day_volume": round(day_volume, 2),
+                    "fh_vol_vs_day": None if fh_vol_vs_day is None else round(fh_vol_vs_day, 4),
+
+                    "fh_high": round(fh_high, 4),
+                    "fh_low": round(fh_low, 4),
+
+                    "final_abs_high": None if final_abs_high is None else round(final_abs_high, 4),
+                    "hours_to_final_abs_high": hours_to_final_abs_high,
+                    "extension_points_above_fh_high": ext_above,
+                    "made_new_high_after_fh": bool(made_new_high),
+
+                    "final_abs_low": None if final_abs_low is None else round(final_abs_low, 4),
+                    "hours_to_final_abs_low": hours_to_final_abs_low,
+                    "extension_points_below_fh_low": ext_below,
+                    "made_new_low_after_fh": bool(made_new_low),
+
+                    **lh_metrics,
+                })
+
+        # ---------------- OTHER/NORMAL DAYS: NOT BIG-VOLUME ----------------
         else:
-            made_new_high = (final_abs_high is not None) and (final_abs_high > fh_high)
-            made_new_low = (final_abs_low is not None) and (final_abs_low < fh_low)
-
-            results["chop_days"].append({
-                "date": str(date),
-                "tf": tf,
+            # “Same kind of data” as chop bucket (post-FH highs/lows, extensions, last hour reaction)
+            results["other_days"].append({
+                "date": str(date), "tf": tf,
                 "fh_move_pct": round(fh_move_pct, 4),
+
+                "fh_volume": round(fh_volume, 2),
+                "day_volume": round(day_volume, 2),
+                "fh_vol_vs_day": None if fh_vol_vs_day is None else round(fh_vol_vs_day, 4),
 
                 "fh_high": round(fh_high, 4),
                 "fh_low": round(fh_low, 4),
@@ -639,23 +613,23 @@ def main():
                 "extension_points_below_fh_low": ext_below,
                 "made_new_low_after_fh": bool(made_new_low),
 
-                # last hour reaction
                 **lh_metrics,
             })
 
+    # Save charts json
+    import json
     charts_json = f"{symbol}_{tf}_charts.json"
     with open(charts_json, "w") as f:
         json.dump(charts_by_date, f)
+    print(f"\n✓ Saved charts: {charts_json} ({len(charts_by_date)} days)")
 
-    print(f"✓ Saved charts: {charts_json} (base64 PNGs)")
-
-    # ---------------- Save + Summary ----------------
+    # Save CSVs + summary
     import pandas as pd
-    import json
 
     sell_df = pd.DataFrame(results["selloffs"])
     buy_df = pd.DataFrame(results["buyups"])
     chop_df = pd.DataFrame(results["chop_days"])
+    other_df = pd.DataFrame(results["other_days"])
 
     summary = {
         "meta": {
@@ -672,6 +646,7 @@ def main():
         "selloffs": {},
         "buyups": {},
         "chop_days": {},
+        "other_days": {},
     }
 
     if len(sell_df):
@@ -714,14 +689,31 @@ def main():
             "avg_lh_move_pct": safe_mean(chop_df["lh_move_pct"]) if "lh_move_pct" in chop_df.columns else 0.0,
         }
 
+    if len(other_df):
+        summary["other_days"] = {
+            "total_count": int(len(other_df)),
+            "new_high_rate": float(other_df["made_new_high_after_fh"].mean()),
+            "new_low_rate": float(other_df["made_new_low_after_fh"].mean()),
+            "avg_ext_above_fh_high": safe_mean(other_df["extension_points_above_fh_high"]),
+            "avg_ext_below_fh_low": safe_mean(other_df["extension_points_below_fh_low"]),
+            "avg_hours_to_final_high": safe_mean(other_df["hours_to_final_abs_high"]),
+            "avg_hours_to_final_low": safe_mean(other_df["hours_to_final_abs_low"]),
+            "avg_lh_move_pct": safe_mean(other_df["lh_move_pct"]) if "lh_move_pct" in other_df.columns else 0.0,
+            "avg_fh_vol_vs_day": safe_mean(other_df["fh_vol_vs_day"]) if "fh_vol_vs_day" in other_df.columns else 0.0,
+        }
+
     sell_csv = f"{symbol}_{tf}_selloffs_detail.csv"
     buy_csv = f"{symbol}_{tf}_buyups_detail.csv"
     chop_csv = f"{symbol}_{tf}_chop_days_detail.csv"
+    other_csv = f"{symbol}_{tf}_other_days_detail.csv"
     sum_json = f"{symbol}_{tf}_summary_stats.json"
 
     sell_df.to_csv(sell_csv, index=False)
     buy_df.to_csv(buy_csv, index=False)
     chop_df.to_csv(chop_csv, index=False)
+    other_df.to_csv(other_csv, index=False)
+
+    import json
     with open(sum_json, "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -731,7 +723,9 @@ def main():
     print(f"✓ {sell_csv}")
     print(f"✓ {buy_csv}")
     print(f"✓ {chop_csv}")
+    print(f"✓ {other_csv}")
     print(f"✓ {sum_json}")
+    print(f"✓ {charts_json}")
 
     print("\n" + "=" * 80)
     print("STEP 4: Generating Dashboard")
