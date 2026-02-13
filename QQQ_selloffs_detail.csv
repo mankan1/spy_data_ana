@@ -1,0 +1,8 @@
+date,first_hour_range,final_abs_low,hours_to_final_abs_low,extension_points_below_fh_low,continuation_hours,chop_hours,bounce_25_hours,bounce_50_hours,failed_selloff
+2025-08-20,8.71,558.84,1,0.67,1,0,1,1.0,False
+2025-08-29,5.39,568.54,3,0.71,3,0,1,,False
+2025-09-05,6.07,571.54,1,2.98,1,0,1,1.0,False
+2025-11-18,7.03,591.34,1,1.25,1,0,1,1.0,False
+2025-11-21,4.34,580.74,1,2.43,1,0,1,1.0,False
+2026-02-05,5.29,594.77,1,0.15,1,0,1,1.0,False
+2026-02-12,4.23,601.54,3,8.93,3,0,1,1.0,False

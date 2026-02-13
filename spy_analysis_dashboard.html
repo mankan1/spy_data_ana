@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPY First Hour Volume Analysis Dashboard</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+      color:#333;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .header h1 { font-size: 2.4em; color:#1e3c72; margin-bottom: 10px; }
+    .header p { color:#666; font-size: 1.05em; }
+    .muted { color:#999; margin-top: 10px; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+      margin-bottom: 26px;
+    }
+    .stat-card {
+      background: white;
+      padding: 22px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      transition: transform 0.25s, box-shadow 0.25s;
+    }
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.14);
+    }
+    .stat-card.selloff { border-left: 5px solid #e74c3c; }
+    .stat-card.buyup  { border-left: 5px solid #27ae60; }
+
+    .stat-label {
+      font-size: 0.85em;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .stat-value {
+      font-size: 2.2em;
+      font-weight: 800;
+      margin-top: 10px;
+    }
+    .stat-card.selloff .stat-value { color: #e74c3c; }
+    .stat-card.buyup  .stat-value { color: #27ae60; }
+
+    .section {
+      background: white;
+      padding: 28px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+      margin-bottom: 26px;
+    }
+    .section h2 {
+      font-size: 1.7em;
+      margin-bottom: 16px;
+      color: #1e3c72;
+      border-bottom: 3px solid #1e3c72;
+      padding-bottom: 10px;
+    }
+
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+    }
+    .metrics-table th {
+      background: #f8f9fa;
+      padding: 14px;
+      text-align: left;
+      font-weight: 650;
+      border-bottom: 2px solid #dee2e6;
+    }
+    .metrics-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .metrics-table tr:hover { background: #f8f9fa; }
+
+    .percentage {
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .percentage.high { background:#d4edda; color:#155724; }
+    .percentage.medium { background:#fff3cd; color:#856404; }
+    .percentage.low { background:#f8d7da; color:#721c24; }
+
+    .tabs {
+      display:flex;
+      gap:10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 11px 18px;
+      background:#e9ecef;
+      border:none;
+      border-radius: 9px;
+      cursor:pointer;
+      font-weight: 700;
+    }
+    .tab.active { background:#1e3c72; color:white; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    .detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.92em;
+    }
+    .detail-table th {
+      background:#e9ecef;
+      padding: 10px;
+      text-align:left;
+      font-weight: 650;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .detail-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #dee2e6;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    .detail-table tr:nth-child(even) { background:#f8f9fa; }
+
+    .scroll-x {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid #eef1f5;
+    }
+
+    .legend {
+      background:#f8f9fa;
+      padding: 18px;
+      border-radius: 10px;
+    }
+    .legend h4 { margin-bottom: 12px; color:#1e3c72; }
+    .legend-item {
+      margin: 8px 0;
+      padding: 9px;
+      background:white;
+      border-radius: 8px;
+    }
+    .legend-item strong { color:#1e3c72; }
+
+    @media (max-width: 768px) {
+      .header h1 { font-size: 1.8em; }
+      .stat-value { font-size: 2em; }
+      .detail-table td, .detail-table th { white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 SPY First Hour Volume Analysis</h1>
+      <p>Big first-hour volume moves and what happens next (continuation, chop, retrace, extensions)</p>
+      <p class="muted">Analysis Period: Last 180 Days | Generated: 2026-02-12 14:38:18</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card selloff">
+        <div class="stat-label">Total Sell-Offs Detected</div>
+        <div class="stat-value">11</div>
+      </div>
+      <div class="stat-card selloff">
+        <div class="stat-label">Avg First-Hour Drop</div>
+        <div class="stat-value">5.31</div>
+        <div class="stat-label">Points</div>
+      </div>
+      <div class="stat-card selloff">
+        <div class="stat-label">Continuation Rate</div>
+        <div class="stat-value">81.8%</div>
+        <div class="stat-label">9 times</div>
+      </div>
+      <div class="stat-card selloff">
+        <div class="stat-label">Avg Extension Below FH Low</div>
+        <div class="stat-value">1.81</div>
+        <div class="stat-label">Points</div>
+      </div>
+      <div class="stat-card selloff">
+        <div class="stat-label">Avg Hours to Final Abs Low</div>
+        <div class="stat-value">1.82</div>
+        <div class="stat-label">Hours after 1st hour</div>
+      </div>
+      <div class="stat-card selloff">
+        <div class="stat-label">50% Bounce Rate</div>
+        <div class="stat-value">100.0%</div>
+        <div class="stat-label">11 times</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>📉 Sell-Off Detailed Metrics</h2>
+      <table class="metrics-table">
+        <tr><th>Metric</th><th>Value</th><th>Details</th></tr>
+        <tr>
+          <td><strong>Continued Lower (new lows after 1st hour)</strong></td>
+          <td><span class="percentage high">81.8%</span></td>
+          <td>9 out of 11 | Avg: 1.8 hours</td>
+        </tr>
+        <tr>
+          <td><strong>Entered Chop Zone</strong></td>
+          <td><span class="percentage low">0.0%</span></td>
+          <td>0 times | Avg duration: 0.0 hours</td>
+        </tr>
+        <tr>
+          <td><strong>25% Bounce</strong></td>
+          <td><span class="percentage high">100.0%</span></td>
+          <td>11 times | Avg time: 1.0 hours</td>
+        </tr>
+        <tr>
+          <td><strong>50% Bounce</strong></td>
+          <td><span class="percentage high">100.0%</span></td>
+          <td>11 times | Avg time: 1.3 hours</td>
+        </tr>
+        <tr>
+          <td><strong>Failed Sell-Offs (no new low)</strong></td>
+          <td><span class="percentage high">18.2%</span></td>
+          <td>2 times - price never made new lows after first hour</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card buyup">
+        <div class="stat-label">Total Buy-Ups Detected</div>
+        <div class="stat-value">10</div>
+      </div>
+      <div class="stat-card buyup">
+        <div class="stat-label">Avg First-Hour Rally</div>
+        <div class="stat-value">4.26</div>
+        <div class="stat-label">Points</div>
+      </div>
+      <div class="stat-card buyup">
+        <div class="stat-label">Continuation Rate</div>
+        <div class="stat-value">100.0%</div>
+        <div class="stat-label">10 times</div>
+      </div>
+      <div class="stat-card buyup">
+        <div class="stat-label">Avg Extension Above FH High</div>
+        <div class="stat-value">2.87</div>
+        <div class="stat-label">Points</div>
+      </div>
+      <div class="stat-card buyup">
+        <div class="stat-label">Avg Hours to Final Abs High</div>
+        <div class="stat-value">3.30</div>
+        <div class="stat-label">Hours after 1st hour</div>
+      </div>
+      <div class="stat-card buyup">
+        <div class="stat-label">50% Pullback Rate</div>
+        <div class="stat-value">70.0%</div>
+        <div class="stat-label">7 times</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>📈 Buy-Up Detailed Metrics</h2>
+      <table class="metrics-table">
+        <tr><th>Metric</th><th>Value</th><th>Details</th></tr>
+        <tr>
+          <td><strong>Continued Higher (new highs after 1st hour)</strong></td>
+          <td><span class="percentage high">100.0%</span></td>
+          <td>10 out of 10 | Avg: 3.3 hours</td>
+        </tr>
+        <tr>
+          <td><strong>Entered Chop Zone</strong></td>
+          <td><span class="percentage low">0.0%</span></td>
+          <td>0 times | Avg duration: 0.0 hours</td>
+        </tr>
+        <tr>
+          <td><strong>25% Pullback</strong></td>
+          <td><span class="percentage high">100.0%</span></td>
+          <td>10 times | Avg time: 1.0 hours</td>
+        </tr>
+        <tr>
+          <td><strong>50% Pullback</strong></td>
+          <td><span class="percentage high">70.0%</span></td>
+          <td>7 times | Avg time: 1.0 hours</td>
+        </tr>
+        <tr>
+          <td><strong>Failed Buy-Ups (no new high)</strong></td>
+          <td><span class="percentage high">0.0%</span></td>
+          <td>0 times - price never made new highs after first hour</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>📋 Detailed Event Analysis</h2>
+      <div class="tabs">
+        <button class="tab active" onclick="showTab('selloffs')">Sell-Off Events</button>
+        <button class="tab" onclick="showTab('buyups')">Buy-Up Events</button>
+      </div>
+
+      <div id="selloffs-content" class="tab-content active">
+
+        <div class="scroll-x">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>FH Drop (pts)</th>
+                <th>Final Abs Low</th>
+                <th>Ext Below FH Low (pts)</th>
+                <th>Hours to Final Low</th>
+                <th>Continuation (hrs)</th>
+                <th>Chop (hrs)</th>
+                <th>25% Bounce (hrs)</th>
+                <th>50% Bounce (hrs)</th>
+                <th>Failed?</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>2025-08-20</td>
+                <td>5.73</td>
+                <td>632.95</td>
+                <td>0.72</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-09-05</td>
+                <td>5.43</td>
+                <td>643.33</td>
+                <td>2.72</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-11-18</td>
+                <td>5.29</td>
+                <td>655.86</td>
+                <td>0.94</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-11-21</td>
+                <td>2.71</td>
+                <td>650.85</td>
+                <td>1.49</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-12-15</td>
+                <td>6.49</td>
+                <td>679.42</td>
+                <td>-0.17</td>
+                <td>3</td>
+                <td>0</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>Yes</td>
+              </tr>
+
+              <tr>
+                <td>2026-01-02</td>
+                <td>4.13</td>
+                <td>679.82</td>
+                <td>1.76</td>
+                <td>4</td>
+                <td>4</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-01-14</td>
+                <td>3.32</td>
+                <td>686.04</td>
+                <td>1.64</td>
+                <td>2</td>
+                <td>2</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-01-29</td>
+                <td>7.53</td>
+                <td>684.83</td>
+                <td>4.03</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-02-03</td>
+                <td>5.84</td>
+                <td>684.03</td>
+                <td>6.77</td>
+                <td>4</td>
+                <td>4</td>
+                <td>0</td>
+                <td>1</td>
+                <td>4</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-02-05</td>
+                <td>4.77</td>
+                <td>675.79</td>
+                <td>0.39</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-02-11</td>
+                <td>7.21</td>
+                <td>689.56</td>
+                <td>-0.38</td>
+                <td>1</td>
+                <td>0</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>Yes</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <div id="buyups-content" class="tab-content">
+
+        <div class="scroll-x">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>FH Rally (pts)</th>
+                <th>Final Abs High</th>
+                <th>Ext Above FH High (pts)</th>
+                <th>Hours to Final High</th>
+                <th>Continuation (hrs)</th>
+                <th>Chop (hrs)</th>
+                <th>25% Pullback (hrs)</th>
+                <th>50% Pullback (hrs)</th>
+                <th>Failed?</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>2025-08-22</td>
+                <td>7.79</td>
+                <td>646.50</td>
+                <td>0.95</td>
+                <td>2</td>
+                <td>2</td>
+                <td>0</td>
+                <td>1</td>
+                <td>-</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-09-18</td>
+                <td>2.60</td>
+                <td>664.89</td>
+                <td>0.40</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-10-14</td>
+                <td>2.74</td>
+                <td>665.83</td>
+                <td>5.92</td>
+                <td>4</td>
+                <td>4</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-10-17</td>
+                <td>4.22</td>
+                <td>665.76</td>
+                <td>2.04</td>
+                <td>5</td>
+                <td>5</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-11-14</td>
+                <td>4.58</td>
+                <td>675.66</td>
+                <td>5.70</td>
+                <td>3</td>
+                <td>3</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2025-12-19</td>
+                <td>3.93</td>
+                <td>681.09</td>
+                <td>0.57</td>
+                <td>3</td>
+                <td>3</td>
+                <td>0</td>
+                <td>1</td>
+                <td>-</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-01-20</td>
+                <td>2.52</td>
+                <td>684.77</td>
+                <td>0.76</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-01-21</td>
+                <td>3.13</td>
+                <td>688.73</td>
+                <td>5.32</td>
+                <td>5</td>
+                <td>5</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-02-02</td>
+                <td>6.09</td>
+                <td>696.93</td>
+                <td>1.26</td>
+                <td>3</td>
+                <td>3</td>
+                <td>0</td>
+                <td>1</td>
+                <td>-</td>
+                <td>No</td>
+              </tr>
+
+              <tr>
+                <td>2026-02-06</td>
+                <td>5.05</td>
+                <td>692.31</td>
+                <td>5.80</td>
+                <td>6</td>
+                <td>6</td>
+                <td>0</td>
+                <td>1</td>
+                <td>1</td>
+                <td>No</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="legend">
+        <h4>📖 Metrics Explanation</h4>
+        <div class="legend-item"><strong>Big Volume Threshold:</strong> 75th percentile of first-hour daily volume.</div>
+        <div class="legend-item"><strong>First Hour:</strong> Intended as 9:30–10:30 ET (best results with 30m bars; 1h bars may skip some days).</div>
+        <div class="legend-item"><strong>Continuation:</strong> New lows (sell-offs) or new highs (buy-ups) after the first hour.</div>
+        <div class="legend-item"><strong>Final Abs Low/High:</strong> Lowest low / highest high AFTER the first hour.</div>
+        <div class="legend-item"><strong>Extension Points:</strong> Points beyond first-hour low/high to the final absolute low/high.</div>
+        <div class="legend-item"><strong>25%/50% Bounce/Pullback:</strong> Time to retrace 25%/50% of the first-hour move (measured from running extremes).</div>
+        <div class="legend-item"><strong>Chop Zone:</strong> Bars where bar range &lt; 30% of the first-hour range (counted until the 25% retrace triggers).</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showTab(tabName) {
+      const contents = document.querySelectorAll('.tab-content');
+      contents.forEach(content => content.classList.remove('active'));
+
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => tab.classList.remove('active'));
+
+      document.getElementById(tabName + '-content').classList.add('active');
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>

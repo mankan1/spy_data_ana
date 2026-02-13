@@ -1,0 +1,32 @@
+{
+  "selloffs": {
+    "total_count": 7,
+    "avg_selloff_points": 5.865714285714286,
+    "continuation_count": 7,
+    "avg_continuation_hours": 1.5714285714285714,
+    "chop_count": 0,
+    "avg_chop_hours": 0.0,
+    "bounce_50_count": 6,
+    "avg_bounce_50_hours": 1.0,
+    "bounce_25_count": 7,
+    "avg_bounce_25_hours": 1.0,
+    "failed_selloff_count": 0,
+    "avg_extension_points_below_fh_low": 2.4457142857142853,
+    "avg_hours_to_final_abs_low": 1.5714285714285714
+  },
+  "buyups": {
+    "total_count": 14,
+    "avg_buyup_points": 4.122142857142857,
+    "continuation_count": 13,
+    "avg_continuation_hours": 3.3076923076923075,
+    "chop_count": 0,
+    "avg_chop_hours": 0.0,
+    "pullback_50_count": 11,
+    "avg_pullback_50_hours": 1.0909090909090908,
+    "pullback_25_count": 14,
+    "avg_pullback_25_hours": 1.0,
+    "failed_buyup_count": 1,
+    "avg_extension_points_above_fh_high": 2.1271428571428577,
+    "avg_hours_to_final_abs_high": 3.142857142857143
+  }
+}

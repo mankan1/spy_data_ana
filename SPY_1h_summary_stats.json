@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "symbol": "SPY",
+    "tf": "1h",
+    "bar_hours": 1.0,
+    "days": 180,
+    "volume_quantile": 0.5,
+    "big_volume_threshold": 16933046.0,
+    "move_threshold_pct": 0.3,
+    "chop_band_pct": 0.8,
+    "chop_max_range_mult": 2.5
+  },
+  "selloffs": {
+    "total_count": 11,
+    "continuation_rate": 0.8181818181818182,
+    "avg_first_hour_range": 5.021027272727273,
+    "avg_extension_below_fh_low": 1.9691636363636364,
+    "avg_hours_to_final_abs_low": 2.3636363636363638,
+    "avg_chop_hours": 0.0,
+    "chop_rate": 0.0,
+    "bounce_25_rate": 1.0,
+    "bounce_50_rate": 1.0,
+    "avg_lh_move_pct": 0.04827272727272729
+  },
+  "buyups": {
+    "total_count": 10,
+    "continuation_rate": 0.9,
+    "avg_first_hour_range": 3.9289999999999994,
+    "avg_extension_above_fh_high": 2.4299500000000003,
+    "avg_hours_to_final_abs_high": 3.9,
+    "avg_chop_hours": 0.0,
+    "chop_rate": 0.0,
+    "pullback_25_rate": 1.0,
+    "pullback_50_rate": 0.8,
+    "avg_lh_move_pct": -0.026000000000000002
+  },
+  "chop_days": {
+    "total_count": 9,
+    "new_high_rate": 0.7777777777777778,
+    "new_low_rate": 0.4444444444444444,
+    "avg_ext_above_fh_high": 1.181166666666667,
+    "avg_ext_below_fh_low": 2.1777777777777776,
+    "avg_hours_to_final_high": 3.111111111111111,
+    "avg_hours_to_final_low": 3.5555555555555554,
+    "avg_lh_move_pct": -0.08304444444444445
+  }
+}
