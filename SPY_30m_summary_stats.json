@@ -11,16 +11,17 @@
     "chop_max_range_mult": 1.75
   },
   "selloffs": {
-    "total_count": 11,
-    "continuation_rate": 0.8181818181818182,
-    "avg_first_hour_range": 5.021027272727273,
-    "avg_extension_below_fh_low": 1.9691636363636364,
-    "avg_hours_to_final_abs_low": 2.090909090909091,
+    "total_count": 10,
+    "continuation_rate": 0.8,
+    "avg_first_hour_range": 4.9936300000000005,
+    "avg_extension_below_fh_low": 2.07208,
+    "avg_hours_to_final_abs_low": 2.2,
     "avg_chop_hours": 0.0,
-    "chop_rate": 0.0,
     "bounce_25_rate": 1.0,
     "bounce_50_rate": 1.0,
-    "avg_lh_move_pct": -0.03128181818181819
+    "avg_lh_move_pct": 0.03016000000000001,
+    "avg_lh_range": 2.8419499999999998,
+    "avg_lh_vol_vs_day": 0.21800000000000003
   },
   "buyups": {
     "total_count": 10,
@@ -29,20 +30,23 @@
     "avg_extension_above_fh_high": 2.4299500000000003,
     "avg_hours_to_final_abs_high": 3.65,
     "avg_chop_hours": 0.0,
-    "chop_rate": 0.0,
     "pullback_25_rate": 1.0,
     "pullback_50_rate": 0.7,
-    "avg_lh_move_pct": -0.04365999999999999
+    "avg_lh_move_pct": -0.04365999999999999,
+    "avg_lh_range": 2.14047,
+    "avg_lh_vol_vs_day": 0.24715000000000004
   },
   "chop_days": {
-    "total_count": 9,
-    "new_high_rate": 0.7777777777777778,
-    "new_low_rate": 0.4444444444444444,
-    "avg_ext_above_fh_high": 1.181166666666667,
-    "avg_ext_below_fh_low": 2.1777777777777776,
-    "avg_hours_to_final_high": 2.7222222222222223,
-    "avg_hours_to_final_low": 3.2222222222222223,
-    "avg_lh_move_pct": -0.06458888888888889
+    "total_count": 10,
+    "new_high_rate": 0.8,
+    "new_low_rate": 0.4,
+    "avg_ext_above_fh_high": 1.3540500000000002,
+    "avg_ext_below_fh_low": 1.6569999999999996,
+    "avg_hours_to_final_high": 2.7,
+    "avg_hours_to_final_low": 3.4,
+    "avg_lh_move_pct": -0.08174000000000001,
+    "avg_lh_range": 2.5649000000000006,
+    "avg_lh_vol_vs_day": 0.20473
   },
   "other_days": {
     "total_count": 29,
@@ -53,6 +57,7 @@
     "avg_hours_to_final_high": 2.3448275862068964,
     "avg_hours_to_final_low": 2.5,
     "avg_lh_move_pct": -0.0877962962962963,
-    "avg_fh_vol_vs_day": 0.22881724137931037
+    "avg_lh_range": 1.700062962962963,
+    "avg_lh_vol_vs_day": 0.2688074074074074
   }
 }

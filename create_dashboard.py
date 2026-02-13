@@ -50,6 +50,18 @@ def fmt(x, nd=2):
         return str(x)
 
 
+def fmt_int(x):
+    if x is None:
+        return ""
+    try:
+        v = float(x)
+        if v != v:
+            return ""
+        return f"{int(round(v))}"
+    except Exception:
+        return str(x)
+
+
 def pct(x, nd=1):
     if x is None:
         return ""
@@ -60,6 +72,33 @@ def pct(x, nd=1):
         return f"{v:.{nd}f}%"
     except Exception:
         return str(x)
+
+
+def pct_frac_to_percent(x, nd=1):
+    """
+    Input is a fraction like 0.23 (meaning 23%).
+    Output is '23.0%'.
+    """
+    if x in (None, ""):
+        return ""
+    try:
+        v = float(x)
+        if v != v:
+            return ""
+        return f"{v*100.0:.{nd}f}%"
+    except Exception:
+        return str(x)
+
+
+def yn(x):
+    if x in (None, ""):
+        return ""
+    s = str(x).strip().lower()
+    if s in ("true", "1", "yes", "y"):
+        return "Yes"
+    if s in ("false", "0", "no", "n"):
+        return "No"
+    return str(x)
 
 
 def make_table(rows, cols):
@@ -115,77 +154,141 @@ def main():
     def chart_btn(date_str):
         if not date_str:
             return ""
-        # always show button; modal shows “no chart” if missing
         return f"""<button class="btn" onclick="showChart('{date_str}')">View</button>"""
 
-    # Columns for tables
+    # -------------------------
+    # TABLE COLUMNS (UPDATED)
+    # -------------------------
+
+    # Sell-offs: NEW bounce columns + last-hour columns + failed
     sell_cols = [
         ("date", "Date", None),
         ("fh_move_pct", "FH Move", lambda v: pct(v, 2)),
         ("first_hour_range", "FH Range (pts)", lambda v: fmt(v, 2)),
+        ("fh_volume", "FH Vol", fmt_int),
+        ("fh_vol_vs_day", "FH Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("final_abs_low", "Final Abs Low", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_low", "Hrs→Final Low", lambda v: fmt(v, 2)),
         ("extension_points_below_fh_low", "Ext Below FH Low", lambda v: fmt(v, 2)),
         ("continuation_hours", "Continuation (hrs)", lambda v: fmt(v, 2)),
         ("chop_hours", "Chop (hrs)", lambda v: fmt(v, 2)),
-        ("bounce_25_hours", "25% Bounce (hrs)", lambda v: fmt(v, 2)),
-        ("bounce_50_hours", "50% Bounce (hrs)", lambda v: fmt(v, 2)),
+
+        ("bounce_25_hours_after_fh", "25% Bounce (hrs after FH)", lambda v: fmt(v, 2)),
+        ("bounce_25_level", "25% Bounce Level", lambda v: fmt(v, 2)),
+        ("bounce_50_hours_after_fh", "50% Bounce (hrs after FH)", lambda v: fmt(v, 2)),
+        ("bounce_50_level", "50% Bounce Level", lambda v: fmt(v, 2)),
+
+        ("failed_selloff", "Failed?", yn),
+
         ("lh_move_pct", "Last Hr %", lambda v: pct(v, 2)),
+        ("lh_range", "Last Hr Range", lambda v: fmt(v, 2)),
+        ("lh_volume", "Last Hr Vol", fmt_int),
+        ("lh_vol_vs_day", "Last Hr Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("date", "Chart", lambda v: chart_btn(v)),
     ]
 
+    # Buy-ups: NEW pullback columns + last-hour columns + failed
     buy_cols = [
         ("date", "Date", None),
         ("fh_move_pct", "FH Move", lambda v: pct(v, 2)),
         ("first_hour_range", "FH Range (pts)", lambda v: fmt(v, 2)),
+        ("fh_volume", "FH Vol", fmt_int),
+        ("fh_vol_vs_day", "FH Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("final_abs_high", "Final Abs High", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_high", "Hrs→Final High", lambda v: fmt(v, 2)),
         ("extension_points_above_fh_high", "Ext Above FH High", lambda v: fmt(v, 2)),
         ("continuation_hours", "Continuation (hrs)", lambda v: fmt(v, 2)),
         ("chop_hours", "Chop (hrs)", lambda v: fmt(v, 2)),
-        ("pullback_25_hours", "25% Pullback (hrs)", lambda v: fmt(v, 2)),
-        ("pullback_50_hours", "50% Pullback (hrs)", lambda v: fmt(v, 2)),
+
+        ("pullback_25_hours_after_fh", "25% Pullback (hrs after FH)", lambda v: fmt(v, 2)),
+        ("pullback_25_level", "25% Pullback Level", lambda v: fmt(v, 2)),
+        ("pullback_50_hours_after_fh", "50% Pullback (hrs after FH)", lambda v: fmt(v, 2)),
+        ("pullback_50_level", "50% Pullback Level", lambda v: fmt(v, 2)),
+
+        ("failed_buyup", "Failed?", yn),
+
         ("lh_move_pct", "Last Hr %", lambda v: pct(v, 2)),
+        ("lh_range", "Last Hr Range", lambda v: fmt(v, 2)),
+        ("lh_volume", "Last Hr Vol", fmt_int),
+        ("lh_vol_vs_day", "Last Hr Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("date", "Chart", lambda v: chart_btn(v)),
     ]
 
+    # BigVol Chop/No Breakout: add last-hour fields + FH vol fields
     chop_cols = [
         ("date", "Date", None),
         ("fh_move_pct", "FH Move", lambda v: pct(v, 2)),
+        ("fh_volume", "FH Vol", fmt_int),
+        ("fh_vol_vs_day", "FH Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("fh_high", "FH High", lambda v: fmt(v, 2)),
         ("fh_low", "FH Low", lambda v: fmt(v, 2)),
+
         ("final_abs_high", "Final Abs High", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_high", "Hrs→Final High", lambda v: fmt(v, 2)),
         ("extension_points_above_fh_high", "Ext Above FH High", lambda v: fmt(v, 2)),
-        ("made_new_high_after_fh", "New High?", None),
+        ("made_new_high_after_fh", "New High?", yn),
+
         ("final_abs_low", "Final Abs Low", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_low", "Hrs→Final Low", lambda v: fmt(v, 2)),
         ("extension_points_below_fh_low", "Ext Below FH Low", lambda v: fmt(v, 2)),
-        ("made_new_low_after_fh", "New Low?", None),
+        ("made_new_low_after_fh", "New Low?", yn),
+
         ("lh_move_pct", "Last Hr %", lambda v: pct(v, 2)),
+        ("lh_range", "Last Hr Range", lambda v: fmt(v, 2)),
+        ("lh_volume", "Last Hr Vol", fmt_int),
+        ("lh_vol_vs_day", "Last Hr Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("date", "Chart", lambda v: chart_btn(v)),
     ]
 
+    # Other/Normal Days: include both bounce-from-low and pullback-from-high metrics + last hour + failed new high/low
     other_cols = [
         ("date", "Date", None),
         ("fh_move_pct", "FH Move", lambda v: pct(v, 2)),
-        ("fh_volume", "FH Vol", lambda v: fmt(v, 0)),
-        ("fh_vol_vs_day", "FH Vol % of Day", lambda v: pct(float(v)*100.0, 1) if v not in (None,"") else ""),
+        ("fh_volume", "FH Vol", fmt_int),
+        ("fh_vol_vs_day", "FH Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("fh_high", "FH High", lambda v: fmt(v, 2)),
         ("fh_low", "FH Low", lambda v: fmt(v, 2)),
+
         ("final_abs_high", "Final Abs High", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_high", "Hrs→Final High", lambda v: fmt(v, 2)),
         ("extension_points_above_fh_high", "Ext Above FH High", lambda v: fmt(v, 2)),
-        ("made_new_high_after_fh", "New High?", None),
+        ("made_new_high_after_fh", "New High?", yn),
+        ("failed_new_high_after_fh", "Failed New High?", yn),
+
         ("final_abs_low", "Final Abs Low", lambda v: fmt(v, 2)),
         ("hours_to_final_abs_low", "Hrs→Final Low", lambda v: fmt(v, 2)),
         ("extension_points_below_fh_low", "Ext Below FH Low", lambda v: fmt(v, 2)),
-        ("made_new_low_after_fh", "New Low?", None),
+        ("made_new_low_after_fh", "New Low?", yn),
+        ("failed_new_low_after_fh", "Failed New Low?", yn),
+
+        ("bounce25_from_fh_low_hours_after_fh", "Bounce25 (hrs after FH)", lambda v: fmt(v, 2)),
+        ("bounce25_from_fh_low_level", "Bounce25 Level", lambda v: fmt(v, 2)),
+        ("bounce50_from_fh_low_hours_after_fh", "Bounce50 (hrs after FH)", lambda v: fmt(v, 2)),
+        ("bounce50_from_fh_low_level", "Bounce50 Level", lambda v: fmt(v, 2)),
+
+        ("pullback25_from_fh_high_hours_after_fh", "Pullback25 (hrs after FH)", lambda v: fmt(v, 2)),
+        ("pullback25_from_fh_high_level", "Pullback25 Level", lambda v: fmt(v, 2)),
+        ("pullback50_from_fh_high_hours_after_fh", "Pullback50 (hrs after FH)", lambda v: fmt(v, 2)),
+        ("pullback50_from_fh_high_level", "Pullback50 Level", lambda v: fmt(v, 2)),
+
         ("lh_move_pct", "Last Hr %", lambda v: pct(v, 2)),
+        ("lh_range", "Last Hr Range", lambda v: fmt(v, 2)),
+        ("lh_volume", "Last Hr Vol", fmt_int),
+        ("lh_vol_vs_day", "Last Hr Vol % of Day", lambda v: pct_frac_to_percent(v, 1)),
+
         ("date", "Chart", lambda v: chart_btn(v)),
     ]
 
-    # Top cards
+    # -------------------------
+    # TOP CARDS
+    # -------------------------
     s = summary.get("selloffs", {})
     b = summary.get("buyups", {})
     c = summary.get("chop_days", {})
@@ -211,7 +314,9 @@ def main():
     </div>
     """
 
-    # Tabs
+    # -------------------------
+    # TABS
+    # -------------------------
     tabs = [
         ("sell", "Sell-offs", make_table(sell_rows, sell_cols)),
         ("buy", "Buy-ups", make_table(buy_rows, buy_cols)),
@@ -219,10 +324,11 @@ def main():
         ("other", "Other / Normal Days", make_table(other_rows, other_cols)),
     ]
 
-    tabs_buttons = "".join([f'<button class="tabBtn" onclick="openTab(\'{tid}\')">{name}</button>' for tid, name, _ in tabs])
+    tabs_buttons = "".join(
+        [f'<button class="tabBtn" onclick="openTab(\'{tid}\')">{name}</button>' for tid, name, _ in tabs]
+    )
     tabs_content = "".join([f'<div id="tab_{tid}" class="tabPane">{html}</div>' for tid, _, html in tabs])
 
-    # Embed charts JSON directly
     charts_js = json.dumps(charts)
 
     html = f"""<!doctype html>
